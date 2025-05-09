@@ -1,3 +1,13 @@
+## These are my contributions to the following work, Video-Language Critic. Thank you very much to Minttu and Reggie for helping me understand the codebase.
+Some of my contributions include:  
+- richer failure captions, goal captions
+- new training objectives using the goal captions
+- experiments/ablations
+- fixing existing bugs
+
+For ease of getting started, here are some important things to note for the VLC repository (other notes on the VLC_RL repository below):
+- some extra libraries might need to be installed e.g. moviepy, matplotlib
+- video_language_critic/data/metaworld/mw10_split is where the held-out tasks are
 # Video-Language Critic (VLC): Transferable Reward Functions for Language-Conditioned Robotics
 Official implementation of:
 <p align="center"><b>Video-Language Critic: Transferable Reward Functions for Language-Conditioned Robotics</b><br>
@@ -40,12 +50,16 @@ torchrun main.py --num_thread_reader 6 --epochs 15 --batch_size 64 --n_display 2
 
 ## Trained models
 
-The trained models can be downloaded [here](https://aaltofi-my.sharepoint.com/:f:/g/personal/minttu_alakuijala_aalto_fi/EvDb_h6Dum5Joh703sCA9JIBJ16VPFz79_lJkTowv53VEg?e=znFaAY).
+The trained models can be downloaded [here](https://drive.google.com/drive/folders/1oDMOgyXwX9M9w3Rw-Yj6fVeHx0t13AYG).
 
 ## RL training
 
-To train RL policies with the reward models, please see [https://github.com/reginald-mclean/VLC_RL](https://github.com/reginald-mclean/VLC_RL).
-
+To train RL policies with the reward models, please see [https://github.com/reginald-mclean/VLC_RL](https://github.com/reginald-mclean/VLC_RL).  
+  
+Notes:  
+- VLC_RL folder should be in the video-language-critic directory
+- Please use the sac_jax.py from this repository
+- You may need to set up SSH keys
 
 ## Citation
 
