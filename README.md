@@ -8,6 +8,9 @@ Some of my contributions include:
 For ease of getting started, here are some important things to note for the VLC repository (other notes on the VLC_RL repository below):
 - some extra libraries might need to be installed e.g. moviepy, matplotlib
 - video_language_critic/data/metaworld/mw10_split is where the held-out tasks are
+- For downstream RL (see notes on that below), please use the sac_jax.py file from my repository, not from the VLC_RL repository; it has some code fixes
+
+
 # Video-Language Critic (VLC): Transferable Reward Functions for Language-Conditioned Robotics
 Official implementation of:
 <p align="center"><b>Video-Language Critic: Transferable Reward Functions for Language-Conditioned Robotics</b><br>
@@ -58,7 +61,7 @@ To train RL policies with the reward models, please see [https://github.com/regi
   
 Notes:  
 - VLC_RL folder should be in the video-language-critic directory
-- Please use the sac_jax.py from this repository
+- Please use the sac_jax.py from my repository, not from the VLC_RL repository; it has some code fixes
 - You may need to set up SSH keys
 
 ## Citation
