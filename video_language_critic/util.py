@@ -275,6 +275,18 @@ def get_args(description="CLIP4Clip on Retrieval Task", from_command=None):
         help="Weight of the ranking loss component (if loss_type == sequence_ranking_loss).",
     )
     parser.add_argument(
+        "--goal_rank_loss_weight",
+        type=float,
+        default=1.0,
+        help="Weight of the goal sequence ranking loss component (if loss_type == goal_sequence_ranking_loss).",        
+    )
+    parser.add_argument(
+        "--goal_sim_loss_weight",
+        type=float,
+        default=1.0,
+        help="Weight of the goal similarity loss component (if loss_type == goal_similarity_loss).",        
+    )
+    parser.add_argument(
         "--main_eval_metric",
         type=str,
         default="loss",
@@ -522,6 +534,13 @@ def get_args(description="CLIP4Clip on Retrieval Task", from_command=None):
         type=str,
         help="Choose a CLIP version",
     )
+
+    parser.add_argument(
+        "--use_goal_captions",
+        action="store_true",
+        help="Whether to use goal"
+    )
+
     if from_command is None:
         args = parser.parse_args()
     else:
@@ -532,7 +551,7 @@ def get_args(description="CLIP4Clip on Retrieval Task", from_command=None):
         print('Frame indices to use', args.frame_indices_to_use)
 
     args.loose_type = args.sim_header != "tightTransf"
-    args.return_sequence = args.loss_type in ["sequence_ranking_loss"]
+    args.return_sequence = args.loss_type in ["sequence_ranking_loss", "goal_sequence_ranking_loss"]
     if args.test_datatype is None:
         args.test_datatype = args.datatype
 
@@ -790,24 +809,29 @@ def train_epoch(
     for step, batch in enumerate(train_dataloader):
         if args.dev and step > 2:
             break
-        _, _, _, _, _, video_id, caption = batch
-        batch = tuple(t.to(device) for t in batch[:-2])
+        # _, _, _, _, _, video_id, caption = batch
+        _, _, _, _, _, _, _, _, video_id, caption, goal_caption = batch
+        # batch = tuple(t.to(device) for t in batch[:-2])
+        batch = tuple(t.to(device) for t in batch[:-3])
+        # print(batch)
         if n_gpu == 1:
             # multi-gpu does scattering it-self
             batch = tuple(t.to(device=device, non_blocking=True) for t in batch)
 
-        input_ids, input_mask, segment_ids, video, video_mask = batch
+        # input_ids, input_mask, segment_ids, video, video_mask = batch
+        input_ids, input_mask, segment_ids, input_ids_goal, input_mask_goal, segment_ids_goal, video, video_mask = batch
 
-        if args.deduplicate_captions:
+        if args.deduplicate_captions:  # might need to adapt for goal captions
             input_ids, input_mask, segment_ids, labels = deduplicate_captions(
                 input_ids, [input_mask, segment_ids]
             )
         else:
             labels = None
+            goal_labels = None
 
         # Use videos without captions as negative examples only.
-        if args.use_failures_as_negatives_only:
-            is_caption = torch.any(input_mask, dim=-1)
+        if args.use_failures_as_negatives_only:  # this block filters out failure videos from model inputs
+            is_caption = torch.any(input_mask, dim=-1)  # this works because failure videos have their captions zeroed out by the dataloader
             is_caption = is_caption.squeeze(1)
             if labels is None:
                 labels = torch.eye(len(input_ids), len(video)).to(is_caption.device)
@@ -815,20 +839,39 @@ def train_epoch(
             input_mask = input_mask[is_caption]
             segment_ids = segment_ids[is_caption]
             labels = labels[is_caption]
+            if not torch.any(is_caption):
+                continue  # skip model call if all negatives
+            if args.use_goal_captions:
+                is_goal_caption = torch.any(input_mask_goal, dim=-1)
+                is_goal_caption = is_goal_caption.squeeze(1)
+                if goal_labels is None:
+                    goal_labels = torch.eye(len(input_ids_goal), len(video)).to(is_goal_caption.device)
+                input_ids_goal = input_ids_goal[is_goal_caption]
+                input_mask_goal = input_mask_goal[is_goal_caption]
+                segment_ids_goal = segment_ids_goal[is_goal_caption]
+                goal_labels = goal_labels[is_goal_caption]
 
         loss, loss_breakdown = model(
             input_ids,
             segment_ids,
             input_mask,
+            input_ids_goal,
+            segment_ids_goal,
+            input_mask_goal,            
             video,
             video_mask,
             labels=labels,
             captions=caption,
+            goal_labels=goal_labels,
+            goal_captions=goal_caption
         )
 
         if n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu.
-            loss_breakdown = {k: v.mean() for k, v in loss_breakdown.items()}
+            if args.loss_type == "sequence_ranking_loss" or args.loss_type == "goal_sequence_ranking_loss":  
+                loss_breakdown = {k: v for k, v in loss_breakdown.items()}
+            else:  # note: loss_breakdown is {} for loss_type that use only CrossEn()
+                loss_breakdown = {k: v.mean() for k, v in loss_breakdown.items()}
         if args.gradient_accumulation_steps > 1:
             loss = loss / args.gradient_accumulation_steps
 
@@ -979,12 +1022,15 @@ def eval_epoch(
     model.eval()
     with torch.no_grad():
         batch_list_t = []
+        # batch_list_goal = []
         batch_list_v = []
         batch_sequence_output_list, batch_visual_output_list = [], []
+        # batch_goal_sequence_output_list = []
         total_video_num = 0
         video_ids = []
         captions = []
         all_labels = []
+        # all_goal_labels = []
         video_masks = []
         # ----------------------------
         # 1. cache the features
@@ -992,14 +1038,19 @@ def eval_epoch(
         for bid, batch in enumerate(test_dataloader):
             if args.dev and bid >= 3:
                 break
-            _, _, _, _, _, video_id, caption = batch
+            # _, _, _, _, _, video_id, caption = batch
+            _, _, _, _, _, _, _, _, video_id, caption, goal_caption = batch
             video_ids.append(video_id)
             captions.extend(caption)
 
-            batch = tuple(t.to(device) for t in batch[:-2])
-            input_ids, input_mask, segment_ids, video, video_mask = batch
+            # batch = tuple(t.to(device) for t in batch[:-2])
+            batch = tuple(t.to(device) for t in batch[:-3])
+            # input_ids, input_mask, segment_ids, video, video_mask = batch
+            # I don't think we need to eval on goal stuff
+            input_ids, input_mask, segment_ids, input_ids_goal, input_mask_goal, segment_ids_goal, video, video_mask = batch
 
             labels = torch.eye(len(input_ids), len(video)).to(input_ids.device)
+            # goal_labels = torch.eye(len(input_ids_goal), len(video)).to(input_ids_goal.device)
 
             # Use videos without captions as negative examples only.
             if args.use_failures_as_negatives_only:
@@ -1010,11 +1061,19 @@ def eval_epoch(
                 segment_ids = segment_ids[is_caption]
                 labels = labels[is_caption]
                 # caption = [c for i, c in enumerate(caption) if is_caption[i]]
+                # is_goal_caption = torch.any(input_mask, dim=-1)
+                # is_goal_caption = is_goal_caption.squeeze(1)
+                # if goal_labels is None:
+                #     goal_labels = torch.eye(len(input_ids_goal), len(video)).to(is_goal_caption.device)
+                # input_ids_goal = input_ids_goal[is_goal_caption]
+                # input_mask_goal = input_mask_goal[is_goal_caption]
+                # segment_ids_goal = segment_ids_goal[is_goal_caption]
+                # goal_labels = goal_labels[is_goal_caption]      
 
             # Note: This way of adding reversed videos is a simple but wasteful implementation:
             # 1) Visual output sequences could be reversed after single-frame features have been computed.
             # 2) Not all reversed features need to be compared to all captions.
-            if args.test_on_reversed_negatives:
+            if args.test_on_reversed_negatives:  # may have to be adapted for goal captions
                 reversed_video = model.reverse_videos(video, video_mask)
                 # Negatives do not match any text.
                 labels = torch.cat([labels, torch.zeros_like(labels)], dim=1)
@@ -1028,7 +1087,7 @@ def eval_epoch(
                 video = video.unsqueeze(1)
                 video_mask = video_mask.permute(3, 0, 1, 2)
                 video_mask = video_mask.flatten(0, 1)
-            if multi_sentence_:
+            if multi_sentence_:  # may have to be adapted for goal captions
                 # multi-sentences retrieval means: one clip has two or more descriptions.
                 b, *_t = video.shape
                 sequence_output = model.get_sequence_output(
@@ -1060,20 +1119,29 @@ def eval_epoch(
                 sequence_output, visual_output = model.get_sequence_visual_output(
                     input_ids, segment_ids, input_mask, video, video_mask
                 )
+                # if args.loss_type == "goal_similarity_loss":
+                #     goal_sequence_output = model.get_sequence_output(
+                #         input_ids_goal, segment_ids_goal, input_mask_goal, shaped=True
+                #     )
 
                 batch_sequence_output_list.append(sequence_output)
+                # batch_goal_sequence_output_list.append(goal_sequence_output)
                 batch_list_t.append(
                     (
                         input_mask,
                         segment_ids,
                     )
                 )
+                # batch_list_goal.append(
+                #     (input_mask_goal, segment_ids_goal)
+                # )
 
                 batch_visual_output_list.append(visual_output)
                 batch_list_v.append((video_mask,))
 
             video_masks.append(video_mask.cpu().numpy().squeeze(1))
             all_labels.append(labels)
+            # all_goal_labels.append(goal_labels)
             print("{}/{}\r".format(bid, len(test_dataloader)), end="")
 
         # ----------------------------------

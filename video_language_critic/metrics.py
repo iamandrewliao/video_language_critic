@@ -14,7 +14,7 @@ import cv2
 
 from sklearn.metrics import roc_auc_score
 
-VIDEO_PATH = f"{os.environ['WORK']}/nlr/vlm_dataset/pick_videos"
+VIDEO_PATH = "../video_language_critic/data/vlmbench/test_picks"
 LOG_PATH = "./logs"
 
 NEGATIVE_TASKS = (
@@ -293,14 +293,14 @@ def compute_symmetric_loss(
         video_mask = video_mask.to(device)
     loss = 0
     breakdown = {}
-    if args.loss_type == "sequence_ranking_loss":
+    if args.loss_type == "sequence_ranking_loss" or args.loss_type == "goal_sequence_ranking_loss":
         ranking_loss, breakdown1 = model.ranking_loss_fct(
             sim_tensor, labels, video_mask
         )
         ranking_loss *= args.ranking_loss_weight
         loss += ranking_loss
         breakdown.update({f"tv_{k}": v for k, v in breakdown1.items()})
-        sim_tensor = sim_tensor[:, :, -1]
+        sim_tensor = sim_tensor[:, :, -1]    
     if args.loss_type == "binary_cross_entropy":
         loss, breakdown1 = model.loss_fct(sim_tensor, labels, captions)
         breakdown.update({f"tv_{k}": v for k, v in breakdown1.items()})
@@ -460,6 +460,9 @@ def get_labeled_auc_per_task(
         ]
         included_captions = captions[positive_idxs + task_negative_idxs + negative_idxs]
         included_labels = [c == task for c in included_captions]
+        if len(set(included_labels)) < 2:
+            print(f"Skipping ROC AUC score calculation for task {task}, only one class in labels.")
+            continue
         task_to_auc[task] = roc_auc_score(included_labels, included_scores)
     return np.mean(list(task_to_auc.values()))
 

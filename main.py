@@ -4,6 +4,7 @@ from __future__ import unicode_literals
 from __future__ import print_function
 
 import torch
+import sys
 from video_language_critic.modules.tokenization_clip import SimpleTokenizer as ClipTokenizer
 from video_language_critic.util import (
     get_args,
@@ -24,6 +25,11 @@ global logger
 def main():
     global logger
     args = get_args()
+    
+    confirm = input("Do you have the right captions file in dataloader_vlm_retrieval.py? (use raw-captions-fails-relabeled if you are using failures as positives, use raw-captions if using failures as negatives only) [y/N]: ").strip().lower()
+    if confirm not in ("y", "yes"):
+        print("Exiting.")
+        sys.exit(0)
     args = set_seed_logger(args)
     logger = args.logger
     device, n_gpu = init_device(args, args.local_rank)

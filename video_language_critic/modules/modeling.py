@@ -26,7 +26,7 @@ allgather = AllGather.apply
 
 class CLIP4ClipPreTrainedModel(PreTrainedModel, nn.Module):
     """An abstract class to handle weights initialization and
-    a simple interface for dowloading and loading pretrained models.
+    a simple interface for downloading and loading pretrained models.
     """
 
     def __init__(self, cross_config, *inputs, **kwargs):
@@ -386,6 +386,13 @@ class CLIP4Clip(CLIP4ClipPreTrainedModel):
             self.loss_fct = CrossEn()
             self.ranking_loss_fct = SequentialRankingLoss()
             self.ranking_loss_weight = self.task_config.ranking_loss_weight
+        elif self.loss_type == "goal_sequence_ranking_loss":
+            self.loss_fct = CrossEn()
+            self.ranking_loss_fct = SequentialRankingLoss()
+            self.goal_rank_loss_weight = self.task_config.goal_rank_loss_weight            
+        elif self.loss_type == "goal_similarity_loss":
+            self.loss_fct = CrossEn()  # also uses cross entropy (compare goal caption w/ frames)
+            self.goal_loss_weight = self.task_config.goal_loss_weight
         else:
             self.loss_fct = CrossEn()
 
@@ -399,16 +406,23 @@ class CLIP4Clip(CLIP4ClipPreTrainedModel):
             )
         return reversed_video
 
+    # called by train_epoch() in util.py
     def forward(
         self,
-        input_ids,
-        token_type_ids,
-        attention_mask,
-        video,
+        input_ids,  # aka pairs_text in dataloader_vlm_retrieval.py
+        token_type_ids,  # aka pairs_segment in dataloader_vlm_retrieval.py and segment_ids in util.py
+        attention_mask,  # aka pairs_mask in dataloader_vlm_retrieval.py and input_mask in util.py
+        # these "goal___" inputs have to do with the tokenized goal captions (tokenization is done in dataloader_vlm_retrieval.py)
+        input_ids_goal=None,  # aka pairs_text_goal in dataloader_vlm_retrieval.py
+        token_type_ids_goal=None,  # aka pairs_mask_goal in dataloader_vlm_retrieval.py and segment_ids_goal in util.py
+        attention_mask_goal=None,  # aka pairs_segment_goal in dataloader_vlm_retrieval.py and input_mask_goal in util.py
+        video=None,
         video_mask=None,
         return_loss=None,
         labels=None,
         captions=None,
+        goal_labels=None,
+        goal_captions=None
     ):
         input_ids = input_ids.view(-1, input_ids.shape[-1])
         token_type_ids = token_type_ids.view(-1, token_type_ids.shape[-1])
@@ -424,6 +438,7 @@ class CLIP4Clip(CLIP4ClipPreTrainedModel):
             video_mask = video_mask.squeeze(-1)
         else:
             video_mask = video_mask.view(-1, video_mask.shape[-1])
+        # print("video_mask shape: ", video_mask.shape)
 
         video = torch.as_tensor(video).float()
         b, pair, bs, ts, channel, h, w = video.shape
@@ -440,7 +455,8 @@ class CLIP4Clip(CLIP4ClipPreTrainedModel):
             shaped=True,
             video_frame=video_frame,
         )
-        if self.add_reversed_negatives:
+        # print(sequence_output.shape, visual_output.shape)
+        if self.add_reversed_negatives:  # may have to adapt for goal captions
             reversed_visual_output = self.reverse_videos(visual_output, video_mask)
             if labels is None:
                 assert sequence_output.shape[0] == visual_output.shape[0]
@@ -453,7 +469,7 @@ class CLIP4Clip(CLIP4ClipPreTrainedModel):
         if self.training or return_loss:
             loss = 0.0
             loss_breakdown = {}
-            if self.dist_type == "squared_euclidean":
+            if self.dist_type == "squared_euclidean":  # may have to adapt this for goal captions
                 pdist_matrix = self.pairwise_squared_distances(
                     sequence_output,
                     visual_output,
@@ -472,11 +488,14 @@ class CLIP4Clip(CLIP4ClipPreTrainedModel):
                     video_mask,
                     shaped=True,
                     loose_type=self.loose_type,
-                )
+                )  
+                # SHAPE:
+                # when loss_type=="cross_entropy", sim_matrix.shape==[B_text, B_video] (1 similarity score per video-caption pair) b/c return_sequence=False
+                # when loss_type=="sequence_ranking_loss", sim_matrix.shape==[B_text, B_video, T] (Framewise similarity per video-caption pair)
                 # Sim matrix for the full videos.
                 last_sim_matrix = sim_matrix
-                if self.return_sequence:
-                    last_sim_matrix = sim_matrix[:, :, -1]
+                if self.return_sequence:  # true when loss type = 'sequence_ranking_loss'
+                    last_sim_matrix = sim_matrix[:, :, -1]  # sequence ranking loss uses sim_matrix whereas cross-entropy loss uses just last_sim_matrix
                 if self.loss_type == "sequence_ranking_loss":
                     # Use both sequential and non-sequential losses.
                     sim_loss1, breakdown1 = self.ranking_loss_fct(
@@ -485,15 +504,52 @@ class CLIP4Clip(CLIP4ClipPreTrainedModel):
                     sim_loss1 *= self.ranking_loss_weight
                     loss += sim_loss1
                     loss_breakdown.update({f"tv_{k}": v for k, v in breakdown1.items()})
+                if self.loss_type == "goal_sequence_ranking_loss" or self.loss_type == "goal_similarity_loss":
+                    input_ids_goal = input_ids_goal.view(-1, input_ids_goal.shape[-1])
+                    token_type_ids_goal = token_type_ids_goal.view(-1, token_type_ids_goal.shape[-1])
+                    attention_mask_goal = attention_mask_goal.view(-1, attention_mask_goal.shape[-1])
+                    # Encode goal captions
+                    goal_sequence_output = self.get_sequence_output(
+                        input_ids_goal, token_type_ids_goal, attention_mask_goal, shaped=True
+                    )
+                    goal_sim_matrix, *_tmp = self.get_similarity_logits(
+                        goal_sequence_output,
+                        visual_output,
+                        attention_mask_goal,
+                        video_mask,
+                        shaped=True,
+                        loose_type=self.loose_type,
+                    )  
+                    # goal_sim_matrix will also be [B_text, B_video] if using cross-ent loss (e.g. goal_similarity_loss)
+                    # and [B_text, B_video, T] if using goal_sequence_ranking_loss
+                    if self.loss_type == "goal_sequence_ranking_loss":  # sim_matrix will be [B_text, B_video, T]
+                        goal_loss1, goal_breakdown1 = self.ranking_loss_fct(goal_sim_matrix, goal_labels, video_mask, captions=goal_captions)  # I don't think captions are used in ranking_loss_fct
+                        goal_loss1 *= self.goal_rank_loss_weight
+                        loss += goal_loss1
+                        loss_breakdown.update({f"goal_tv_{k}": v for k, v in goal_breakdown1.items()})
+                    if self.loss_type == "goal_similarity_loss":
+                        # Compute similarity as for task captions
+                        # goal_last_sim_matrix = goal_sim_matrix  # maybe unnecessary
+                        goal_loss1, goal_breakdown1 = self.loss_fct(goal_sim_matrix, goal_labels)
+                        goal_labels_T = goal_labels.T if goal_labels is not None else None
+                        goal_loss2, goal_breakdown2 = (
+                            self.loss_fct(goal_sim_matrix.T, goal_labels_T)
+                            if self.training or (return_loss == "v2t")
+                            else 0.0
+                        )
+                        goal_sim_loss = (goal_loss1 + goal_loss2) / 2  # symmetric loss I think
+                        loss += goal_sim_loss * self.goal_sim_loss_weight
+                        loss_breakdown.update({f"goal_tv_{k}": v for k, v in goal_breakdown1.items()})
+                        loss_breakdown.update({f"goal_vt_{k}": v for k, v in goal_breakdown2.items()})
 
-                if self.loss_type == "binary_cross_entropy":
+                if self.loss_type == "binary_cross_entropy":  # Note: this is not part of the same if-else block as above!
                     sim_loss1, breakdown1 = self.loss_fct(
                         last_sim_matrix, labels, captions=captions
                     )
                     loss += sim_loss1
                     loss_breakdown.update({f"tv_{k}": v for k, v in breakdown1.items()})
-                else:
-                    sim_loss1, breakdown1 = self.loss_fct(last_sim_matrix, labels)
+                else:  # Note: Cross-Entropy loss is always added (even with ranking loss)
+                    sim_loss1, breakdown1 = self.loss_fct(last_sim_matrix, labels)  # Note: CrossEn() returns an empty loss_breakdown {}
                     labels_T = labels.T if labels is not None else None
                     sim_loss2, breakdown2 = (
                         self.loss_fct(last_sim_matrix.T, labels_T)

@@ -68,6 +68,8 @@ class VLM_DataLoader(Dataset):
         video_id_path_dict["val"] = os.path.join(self.data_path, "val_list.txt")
         video_id_path_dict["test"] = os.path.join(self.data_path, "test_list.txt")
         caption_file = os.path.join(self.data_path, "raw-captions.pkl")
+        # caption_file = os.path.join(self.data_path, "raw-captions-fails-relabeled.pkl")
+        goal_caption_file = os.path.join(self.data_path, "goal-captions-fails-relabeled.pkl")
 
         video_ids = []
         if load_data:
@@ -75,7 +77,12 @@ class VLM_DataLoader(Dataset):
                 video_ids = [itm.strip() for itm in fp.readlines()]
 
             with open(caption_file, "rb") as f:
-                captions = pickle.load(f)
+                captions = pickle.load(f)  # dict e.g. success_videos__reach-wall-v2_0: [['Bypass', 'a', 'wall', 'and', 'reach', 'a', 'goal']]
+
+            with open(goal_caption_file, "rb") as f:
+                goal_captions = pickle.load(f)
+
+            assert len(captions) == len(goal_captions)
 
         video_dict = {}
         if load_data:
@@ -91,11 +98,15 @@ class VLM_DataLoader(Dataset):
         self.sample_len = 0
         self.sentences_dict = {}
         self.cut_off_points = []
-        for video_id in video_ids:
+        for video_id in video_ids:  # e.g. "success_videos__push-wall-v2_0"
             assert video_id in captions
-            for cap in captions[video_id]:
+            assert video_id in goal_captions
+            for cap, goal_cap in zip(captions[video_id], goal_captions[video_id]):
+            # for cap in captions[video_id]:
                 cap_txt = " ".join(cap)
-                self.sentences_dict[len(self.sentences_dict)] = (video_id, cap_txt)
+                goal_cap_txt = " ".join(goal_cap)
+                self.sentences_dict[len(self.sentences_dict)] = (video_id, cap_txt, goal_cap_txt)  # appends dict with tuple
+                # self.sentences_dict[len(self.sentences_dict)] = (video_id, cap_txt)  # appends dict with tuple
             self.cut_off_points.append(len(self.sentences_dict))
         if video_max_len > 0:
             self.update_sentences_dict()
@@ -132,13 +143,14 @@ class VLM_DataLoader(Dataset):
             "PAD_TOKEN": "[PAD]",
         }
 
-    def update_sentences_dict(self):
+    def update_sentences_dict(self):  # for default video_max_len=-1, this won't get called
         print(
             f"Slicing every video into max length of {self.video_max_len} frames. This may take a while."
         )
         sentences_dict_new = {}
         for idx, info in self.sentences_dict.items():
-            (video_id, caption) = info
+            # (video_id, caption) = info
+            (video_id, caption, goal_caption) = info
             cap = cv2.VideoCapture(self.video_dict[video_id])
             frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -154,6 +166,7 @@ class VLM_DataLoader(Dataset):
                         "end_time": int(np.ceil((idx + 1) * self.video_max_len / fps)),
                     },
                     caption,
+                    goal_caption,
                 )
         self.sentences_dict = sentences_dict_new
 
@@ -267,27 +280,41 @@ class VLM_DataLoader(Dataset):
         video_id, caption = self.sentences_dict[idx]
         return video_id, caption
 
-    def get_encoded_data(self, video, instruction):
+    def get_encoded_data(self, video, instruction):  # used in get_reward() in reward.py
         pairs_text, pairs_mask, pairs_segment, choice_video_ids = self._get_text(
             video_id=0, caption=instruction
         )
         video, video_mask = self._get_rawvideo(choice_video_ids, video_input=video)
 
         return pairs_text, pairs_mask, pairs_segment, video, video_mask
+    
+    # def get_encoded_data_goal(self, video, instruction, goal):
+    #     pairs_text, pairs_mask, pairs_segment, choice_video_ids = self._get_text(
+    #         video_id=0, caption=instruction
+    #     )
+    #     pairs_text_goal, pairs_mask_goal, pairs_segment_goal, _ = self._get_text(
+    #         video_id=0, caption=goal
+    #     )        
+    #     video, video_mask = self._get_rawvideo(choice_video_ids, video_input=video)
+
+    #     return pairs_text, pairs_mask, pairs_segment, pairs_text_goal, pairs_mask_goal, pairs_segment_goal, video, video_mask
 
     def __getitem__(self, idx):
-        video_id, caption = self.sentences_dict[idx]
+        video_id, caption, goal_caption = self.sentences_dict[idx]
+        # video_id, caption = self.sentences_dict[idx]
 
-        if caption in self.negative_captions:
+        if caption in self.negative_captions:  # this block will only occur if use_failures_as_negatives_only = True (otherwise self.negative_captions = ())
             pairs_text = np.zeros((1, self.max_words), dtype=np.compat.long)
             pairs_mask = np.zeros_like(pairs_text)
             pairs_segment = np.zeros_like(pairs_text)
             choice_video_ids = [video_id]
             # caption = "" if caption in self.negative_captions else caption
-        else:
-            pairs_text, pairs_mask, pairs_segment, choice_video_ids = self._get_text(
-                video_id, caption
-            )
+            pairs_text_goal = np.zeros((1, self.max_words), dtype=np.compat.long)
+            pairs_mask_goal = np.zeros_like(pairs_text_goal)
+            pairs_segment_goal = np.zeros_like(pairs_text_goal)
+        else:  # this block will execute if use_failures_as_negatives_only=False OR if use_failures_as_negatives_only=True AND the caption isn't in self.negative_captions
+            pairs_text, pairs_mask, pairs_segment, choice_video_ids = self._get_text(video_id, caption)
+            pairs_text_goal, pairs_mask_goal, pairs_segment_goal, _ = self._get_text(video_id, goal_caption)
 
         video, video_mask = self._get_rawvideo(choice_video_ids)
         if self.is_test:
@@ -295,18 +322,26 @@ class VLM_DataLoader(Dataset):
                 pairs_text,
                 pairs_mask,
                 pairs_segment,
+                pairs_text_goal,
+                pairs_mask_goal,
+                pairs_segment_goal,
                 video,
                 video_mask,
                 video_id,
                 caption,
+                goal_caption
             )
         else:
             return (
                 pairs_text,
                 pairs_mask,
                 pairs_segment,
+                pairs_text_goal,
+                pairs_mask_goal,
+                pairs_segment_goal,   
                 video,
                 video_mask,
                 video_id,
                 caption,
+                goal_caption
             )

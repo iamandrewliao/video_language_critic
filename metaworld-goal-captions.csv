@@ -1,0 +1,51 @@
+Task,Action Description,Goal Description,Negative Goal Description
+faucet-open-v2,Rotate the faucet counter-clockwise.,The faucet is rotated counter-clockwise.,The faucet is not rotated counter-clockwise.
+sweep-v2,Sweep a puck off the table.,The puck is off the table.,The puck is not off the table.
+assembly-v2,Pick up a nut and place it onto a peg.,The nut is placed onto the peg.,The nut is not placed onto the peg.
+faucet-close-v2,Rotate the faucet clockwise.,The faucet is rotated clockwise.,The faucet is not rotated clockwise.
+push-v2,Push the puck to a goal.,The puck is at the goal position.,The puck is not at the goal position.
+lever-pull-v2,Pull a lever down 90 degrees.,The lever is pulled down 90 degrees.,The lever is not pulled down 90 degrees.
+dial-turn-v2,Rotate a dial 180 degrees.,The dial is rotated 180 degrees.,The dial is not rotated 180 degrees.
+stick-push-v2,Grasp a stick and push a box using the stick.,The box is pushed to the goal using the stick.,The box is not pushed to the goal using the stick.
+coffee-button-v2,Push a button on the coffee machine.,The button on the coffee machine is pressed.,The button on the coffee machine is not pressed.
+handle-pull-side-v2,Pull a handle up sideways.,The handle is pulled up sideways.,The handle is not pulled up sideways.
+basketball-v2,Dunk the basketball into the basket.,The ball is in the basket.,The ball is not in the basket.
+stick-pull-v2,Grasp a stick and pull a box with the stick.,The box is pulled to the goal using the stick.,The box is not pulled to the goal using the stick.
+sweep-into-v2,Sweep a puck into a hole.,The puck is inside the hole.,The puck is not inside the hole.
+disassemble-v2,Pick a nut out of the a peg.,The nut is removed from the peg.,The nut is not removed from the peg.
+shelf-place-v2,Pick and place a puck onto a shelf.,The puck is placed onto the shelf.,The puck is not placed onto the shelf.
+coffee-push-v2,Push a mug under a coffee machine.,The mug is under the coffee machine.,The mug is not under the coffee machine.
+handle-press-side-v2,Press a handle down sideways.,The handle is pressed down sideways.,The handle is not pressed down sideways.
+hammer-v2,Hammer a screw on the wall.,The screw is hammered into the wall.,The screw is not hammered into the wall.
+plate-slide-v2,Slide a plate into a cabinet.,The plate is inside the cabinet.,The plate is not inside the cabinet.
+plate-slide-side-v2,Slide a plate into a cabinet sideways.,The plate is inside the cabinet sideways.,The plate is not inside the cabinet sideways.
+button-press-wall-v2,Bypass a wall and press a button.,The button beyond the wall is pressed.,The button beyond the wall is not pressed.
+handle-press-v2,Press a handle down.,The handle is pressed down.,The handle is not pressed down.
+handle-pull-v2,Pull a handle up.,The handle is pulled up.,The handle is not pulled up.
+soccer-v2,Kick a soccer into the goal.,The soccer ball is in the goal.,The soccer ball is not in the goal.
+plate-slide-back-side-v2,Get a plate from the cabinet sideways.,The plate is retrieved from the cabinet sideways.,The plate is not retrieved from the cabinet sideways.
+plate-slide-back-v2,Get a plate from the cabinet.,The plate is retrieved from the cabinet.,The plate is not retrieved from the cabinet.
+drawer-close-v2,Push and close a drawer.,The drawer is closed.,The drawer is not closed.
+button-press-topdown-v2,Press a button from the top.,The button is pressed from the top.,The button is not pressed from the top.
+reach-v2,Reach a goal position.,The robot arm is at the goal position.,The robot arm is not at the goal position.
+button-press-topdown-wall-v2,Bypass a wall and press a button from the top.,The button beyond the wall is pressed from the top.,The button beyond the wall is not pressed from the top.
+reach-wall-v2,Bypass a wall and reach a goal.,The robot arm reaches the goal past the wall.,The robot arm does not reach the goal past the wall.
+peg-insert-side-v2,Insert a peg sideways.,The peg is inserted sideways.,The peg is not inserted sideways.
+push-back-v2,Pull a puck to a goal.,The puck is pulled to the goal.,The puck is not pulled to the goal.
+push-wall-v2,Bypass a wall and push a puck to a goal.,The puck is pushed to the goal past the wall.,The puck is not pushed to the goal past the wall.
+pick-out-of-hole-v2,Pick up a puck from a hole.,The puck is picked up out of the hole.,The puck is not picked up out of the hole.
+pick-place-wall-v2,"Pick a puck, bypass a wall and place the puck.",The puck is placed at the goal after bypassing the wall.,The puck is not placed at the goal after bypassing the wall.
+button-press-v2,Press a button.,The button is pressed.,The button is not pressed.
+pick-place-v2,Pick and place a puck to a goal.,The puck is placed at the goal.,The puck is not placed at the goal.
+coffee-pull-v2,Pull a mug from a coffee machine.,The mug is pulled away from the coffee machine.,The mug is not pulled away from the coffee machine.
+peg-unplug-side-v2,Unplug a peg sideways.,The peg is unplugged sideways.,The peg is not unplugged sideways.
+window-close-v2,Push and close a window.,The window is closed.,The window is not closed.
+window-open-v2,Push and open a window.,The window is open.,The window is not open.
+door-open-v2,Open a door with a revolving joint.,The door is open.,The door is not open.
+door-close-v2,Close a door with a revolving joint.,The door is closed.,The door is not closed.
+drawer-open-v2,Open a drawer.,The drawer is open.,The drawer is not open.
+hand-insert-v2,Insert the gripper into a hole.,The gripper is inserted into the hole.,The gripper is not inserted into the hole.
+box-close-v2,Grasp the cover and close the box with it.,The box is closed with the cover.,The box is not closed with the cover.
+door-lock-v2,Lock the door by rotating the lock clockwise.,The door is locked.,The door is not locked.
+door-unlock-v2,Unlock the door by rotating the lock counter-clockwise.,The door is unlocked.,The door is not unlocked.
+bin-picking-v2,Grasp the puck from one bin and place it into another bin.,The puck is placed in a new bin.,The puck is not placed in a new bin.
