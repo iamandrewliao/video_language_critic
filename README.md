@@ -1,5 +1,8 @@
 ## These are my contributions to the following work, Video-Language Critic. Thank you very much to Minttu and Reggie for helping me understand the codebase.
-Some of my contributions include:  
+Here is my report on my contributions if you are curious:  
+https://docs.google.com/document/d/1Bj8Ki1Syl6-ZVEcvoGlrSuVkRnEjlG_A_cvJKqnRQlg/edit?usp=sharing  
+  
+Some of my contributions include:
 - richer failure captions, goal captions
     - improved RL sample efficiency by 11% on door-open-v2 using failures as positives with just cross-entropy loss
 - new training objectives using the goal captions (goal similarity loss and goal sequence ranking loss)
